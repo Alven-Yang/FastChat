@@ -350,12 +350,14 @@ def run_evaluate():
     num_gpus_total = data.get('num_gpus_total', 1)
     max_gpu_memory = data.get('max_gpu_memory', 70)
     dtype = str_to_torch_dtype(data.get('dtype', None))
-    cache_dir = os.environ.get('CACHE_DIR', "/root/autodl-tmp/model")
+    cache_dir = os.environ.get('CACHE_DIR', "/home/Userlist/madehua/model/")
     print("model_names:", model_names, "model_ids:", model_ids, "data_ids:", data_ids, "cache_dir:", cache_dir)
     failed = []
     if num_gpus_total // num_gpus_per_model > 1:
         import ray
         ray.init()
+    else:
+        ray = None
     
     try:
         start_time = get_start_time()
@@ -364,7 +366,8 @@ def run_evaluate():
             question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
             for model_name, model_id in zip(model_names, model_ids):
                 model_name_saved = model_name.split('/')[-1]
-                output_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "model_answer", f"{model_name_saved}.jsonl")
+                output_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "model_answer",
+                                           f"{model_name_saved}.jsonl")
                 if is_non_empty_file(output_file):
                     print(
                         f"Skipping model_id {model_id} for data_id {data_id} as output file already exists and is non-empty.")
@@ -394,7 +397,7 @@ def run_evaluate():
                         "model_id": model_id, "model_name": model_name,
                         "output": output_file}
                 outputs.append(temp)
-        
+
         end_time = get_end_time()
         result = {
             "outputs": outputs,
