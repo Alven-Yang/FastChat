@@ -3,10 +3,10 @@ import os
 import uuid
 from collections import defaultdict, OrderedDict
 from pprint import pprint
-
+import GPUtil
 import pandas as pd
 from io import StringIO
-
+import ast
 import torch
 from flask import Flask, request, jsonify
 import subprocess
@@ -17,10 +17,13 @@ import datetime
 import pytz
 
 from fastchat.llm_judge.gen_model_answer import run_eval
-from fastchat.serve.flask.utils import calculate_model_scores, read_jsonl_files, calculate_model_scores2
+from fastchat.serve.flask.utils import calculate_model_scores2
 from fastchat.utils import str_to_torch_dtype
-from flask_utils import get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time
+from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
+                         safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
+                         calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid)
 from fastchat.llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
+from fastchat.serve.flask.functions.gen_eval_report import generate_report
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_PATH = os.path.join(app_dir, 'resources', 'data_config.json')
@@ -59,85 +62,6 @@ RENAME_DATA = {
     'military_ethics_dataset': '军事伦理'
 }
 
-
-def generate_random_model_id():
-    chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
-    return ''.join(random.choice(chars) for _ in range(16))
-
-
-def calculate_score(result_dict):
-    score_result = {}
-    for model, model_result in result_dict.items():
-        category_status = defaultdict(list)
-        for answer in model_result:
-            category = answer["category"].split('|||')[0]
-            pred = answer["choices"][0]["turns"][0].split('')[0]
-            pred_counts = {option: pred.count(option) for option in ['A', 'B', 'C', 'D']}
-            refer_counts = {option: answer["reference_answer"].count(option) for option in ['A', 'B', 'C', 'D']}
-            status = all(pred_counts[option] == refer_counts[option] for option in ['A', 'B', 'C', 'D'])
-            category_status[category].append(status)
-        
-        category_score = {k: (sum(v) / len(v), sum(v), len(v)) for k, v in category_status.items()}
-        total_correct = sum(v[1] for v in category_score.values())
-        total_questions = sum(v[2] for v in category_score.values())
-        score_result[model] = (
-            total_correct, total_questions, total_correct / total_questions if total_questions else 0)
-    
-    return score_result
-
-
-def get_total_scores(model_scores):
-    total_scores = {}
-    for model, scores in model_scores.items():
-        total_scores[model] = sum(scores.values())
-    return total_scores
-
-
-def get_report_by_names(request_id, data_ids, model_names):
-    report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
-    categories = ['合规性', '公平性', '知识产权', '隐私保护', '可信度']
-    header = ['Model ID', 'Total Score'] + categories + ["Evaluate Time", "Report"]
-    leaderboard = [header]
-    for model, model_data in report_per_model.items():
-        if model not in model_names:
-            print("model not in model_names:", model, model_names)
-            continue
-        else:
-            row = [model]
-            total_correct = model_data['total_correct']
-            total_questions = model_data['total_questions']
-            total_score = total_correct / total_questions if total_questions > 0 else 0
-            row.append(total_score)
-            for category in categories:
-                score_per_category_id = model_data['score_per_category'].get(category, {"correct": 0, "total": 0})
-                category_score = score_per_category_id['correct'] / score_per_category_id['total'] \
-                    if score_per_category_id['total'] > 0 else 0
-                row.append(category_score)
-            # report = get_cache()
-            report = ""
-            row.append(get_end_time())
-            row.append(report)
-            leaderboard.append(row)
-    return json.dumps({"request_id": request_id, "leaderboard": leaderboard}, ensure_ascii=False)
-
-
-def get_report_all():
-    report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
-    result = {}
-    for model, model_data in report_per_model.items():
-        total_correct = model_data['total_correct']
-        total_questions = model_data['total_questions']
-        total_score = total_correct / total_questions if total_questions > 0 else 0
-        report = get_cache()
-        model_data.update({"Total Score": total_score, "Report": report, "Evaluate Time": get_end_time()})
-        result.update({model: model_data})
-    return result
-
-
-def random_uuid() -> str:
-    return str(uuid.uuid4().hex)
-
-
 app = Flask(__name__)
 
 
@@ -155,7 +79,7 @@ def get_modelpage_detail():
     data = request.json
     if not all(key in data for key in ['model_name']):
         return jsonify({"error": "Missing required fields in the request"}), 400
-    
+
     MODEL_NAME = data.get('model_name')
     DATA_IDS = list(DATA_DICT.keys())
     print("model_name:", MODEL_NAME, "data_ids:", DATA_IDS)
@@ -178,7 +102,7 @@ def get_modelpage_detail():
         ability_scores_array = []
         for ability, scores in ability_scores.items():
             ability_scores_array.append({"ability": ability, **scores})
-  
+
         scores_per_data_id = report_per_model[MODEL_NAME]["scores_per_data_id"]
         data_id_scores = []
         for data_id, scores in scores_per_data_id.items():
@@ -216,7 +140,7 @@ def get_datapage_detail():
     DATA_ID = data.get('data_id')
     DATA_RENAME = RENAME_DATA.get(DATA_ID, None)
     report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
-    
+
     result = {
         "request_id": request_id,
         "data_id": DATA_ID,
@@ -246,7 +170,7 @@ def get_leaderboard_detail():
                            any(size.lower() in model.lower() for size in model_sizes)]
     filtered_data = ["moral_bench_test5"]
     print("filtered_cates:", filtered_cates, "filtered_models:", filtered_models, "filtered_data:", filtered_data)
-    
+
     report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
     aggregated_scores = {}
     for model_name in filtered_models:
@@ -257,13 +181,13 @@ def get_leaderboard_detail():
             model_data = report_per_model[model_name]
             aggregated_scores[model_name] = {category: 0 for category in categories}
             aggregated_scores[model_name]['count'] = 0
-    
+
             for category in categories:
                 category_score = model_data['score_per_category'].get(category, {})
                 aggregated_scores[model_name][category] = category_score.get('accuracy', 0)
 
             aggregated_scores[model_name]['count'] = model_data['total_questions']
-            
+
     print("aggregated_scores:", aggregated_scores)
 
     final_data = []
@@ -302,12 +226,12 @@ def get_report():
                 if request_id in js0:
                     return js0[request_id]
         return None
-    
+
     data = request.json
     request_id = data.get('request_id')
     if not request_id:
         return jsonify({"error": "Missing request_id in the request"}), 400
-    
+
     evaluation_results = get_evaluation_results(request_id)
     print("evaluation_results:", evaluation_results)
     if evaluation_results is not None:
@@ -319,28 +243,26 @@ def get_report():
         return jsonify({"error": f"No evaluation results found by request_id {request_id}"}), 400
 
 
-def is_non_empty_file(file_path):
-    return os.path.isfile(file_path) and os.path.getsize(file_path) > 0
-
-
 @app.route('/run_evaluate', methods=['POST'])
 def run_evaluate():
     global ray
-    request_id = random_uuid()
     data = request.json
-    model_names = data.get('model_names', None)
-    model_ids = data.get('model_ids', None)
-    data_ids = data.get('data_ids', None)
-    if model_names is None or model_ids is None:
-        model_names = MODEL_NAMES
-        model_ids = MODEL_IDS
-    if data_ids is None:
-        data_ids = DATA_IDS
-        print("using default settings", model_names, model_ids, data_ids)
+    params_config = {
+        'task_id': (None, str),
+        'model_names': ('[]', safe_literal_eval),
+        'model_ids': ('[]', safe_literal_eval),
+        'data_ids': ('[]', safe_literal_eval)
+    }
+    params = parse_params(data, params_config)
+    request_id = params.get('task_id') if params.get('task_id') else random_uuid()
+    model_names = params.get('model_names') if len(params.get('model_names')) > 0 else MODEL_NAMES
+    model_ids = params.get('model_ids') if len(params.get('model_ids')) > 0 else MODEL_IDS
+    data_ids = params.get('data_ids') if len(params.get('data_ids')) > 0 else DATA_IDS
+
     if len(model_names) != len(model_ids):
         print(model_names, model_ids)
         return jsonify({"error": "model_names and model_ids should have the same length"}), 400
-    
+
     revision = data.get('revision', None)
     question_begin = data.get('question_begin', None)
     question_end = data.get('question_end', None)
@@ -358,7 +280,8 @@ def run_evaluate():
         ray.init()
     else:
         ray = None
-    
+    print("ray:", ray)
+
     try:
         start_time = get_start_time()
         outputs = []
@@ -367,7 +290,7 @@ def run_evaluate():
             for model_name, model_id in zip(model_names, model_ids):
                 model_name_saved = model_name.split('/')[-1]
                 output_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "model_answer",
-                                           f"{model_name_saved}.jsonl")
+                                           f"{model_name_saved}_{start_time}.jsonl")
                 if is_non_empty_file(output_file):
                     print(
                         f"Skipping model_id {model_id} for data_id {data_id} as output file already exists and is non-empty.")
@@ -416,6 +339,44 @@ def run_evaluate():
         return jsonify(result)
     except subprocess.CalledProcessError:
         return jsonify({"error": "Script execution failed"}), 500
+
+
+@app.route('/get_eval_report', methods=['POST'])
+def get_eval_report():
+    data = request.json
+    log_folder = os.path.join(BASE_PATH, "llm_judge", "log")
+    log_json = None
+    question_file = []
+    model_name = []
+    time_suffix = ""
+    params_comfig = {
+        'task_id': (None, str)
+    }
+    params = parse_params(data, params_comfig)
+    task_id = params.get('task_id')
+    with open(os.path.join(log_folder, "eval_log.jsonl"), 'r', encoding="utf-8") as f:
+        log_lines = list(f)
+    for line in reversed(log_lines):
+        log = json.loads(line)
+        if task_id in log.keys():
+            log_json = log
+            break
+    if is_non_empty_file(f"./report/report_{task_id}.md"):
+        with open(f"./report/report_{task_id}.md", 'r', encoding="utf-8") as f:
+            report = f.read()
+    else:
+        for data_id in log_json[task_id]["data_ids"]:
+            question_file.append(os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl"))
+        for model in log_json[task_id]["model_names"]:
+            model_name.append(model.split("/")[-1])
+        time_suffix = log_json[task_id]["outputs"][0]["output"].split("/")[-1].split("_")[-1].split(".")[0]
+        gen_eval_report(task_id, question_file, model_name, time_suffix)
+    return "None"
+
+
+@app.route('/run_generate_eval', methods=['POST'])
+def run_generate_eval():
+    return None
 
 
 if __name__ == "__main__":
