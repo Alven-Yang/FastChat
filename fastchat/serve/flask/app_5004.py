@@ -300,9 +300,7 @@ def run_evaluate():
                     os.makedirs(new_answer_dir, exist_ok=True)
                     copy_file(data_id, new_data_dir)
                     os.rename(os.path.join(new_data_dir, data_id.split("/")[-1]), os.path.join(new_data_dir, "question.jsonl"))
-                    data_id = str(data_id.split("/")[-1].split(".")[0])
-                question_file = os.path.join(new_data_dir, "question.jsonl")
-            else:
+                data_id = str(data_id.split("/")[-1].split(".")[0])
                 question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
             for model_name, model_id in zip(model_names, model_ids):
                 model_name_saved = model_name.split('/')[-1]
@@ -395,6 +393,11 @@ def get_eval_report():
 def run_generate_eval():
 
     return None
+
+
+@app.route('/cal_scores', methods=['POST'])
+def cal_scores():
+    data = request.json
 
 
 if __name__ == "__main__":
