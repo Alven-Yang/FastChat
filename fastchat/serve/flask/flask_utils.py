@@ -7,6 +7,8 @@ import pytz
 import ast
 import string, random
 import uuid
+import torch
+import shutil
 from collections import defaultdict
 from fastchat.serve.flask.utils import calculate_model_scores, read_jsonl_files, calculate_model_scores2
 from fastchat.llm_judge.report.assist1 import get_cache
@@ -169,3 +171,27 @@ def is_non_empty_file(file_path):
 def gen_eval_report(task_id, question_file_path, model_name, time_suffix):
     return None
 
+
+def set_gpu():
+    free_gpus = get_free_gpus()
+    if free_gpus:
+        # 如果存在空闲的GPU，选择第一个空闲的GPU
+        selected_gpu = free_gpus[0]
+        # 直接在代码中设置要使用的GPU
+        torch.cuda.set_device(selected_gpu)
+        print(f"已经指定GPU {selected_gpu} 进行运算。")
+    else:
+        print("没有检测到空闲的GPU。")
+
+
+def copy_file(source_file, destination_folder):
+    try:
+        # 使用 shutil 的 copy2 函数来复制文件，保留元数据（如修改时间）
+        shutil.copy2(source_file, destination_folder)
+        print("文件复制成功！")
+    except FileNotFoundError:
+        print("找不到源文件或目标文件夹。")
+    except PermissionError:
+        print("权限错误，无法复制文件。")
+    except Exception as e:
+        print("发生了未知错误:", e)

@@ -15,15 +15,18 @@ import string
 import time
 import datetime
 import pytz
+import shutil
+
 
 from fastchat.llm_judge.gen_model_answer import run_eval
 from fastchat.serve.flask.utils import calculate_model_scores2
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
-                         calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid)
+                         calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid,
+                         set_gpu, copy_file)
 from fastchat.llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
-from fastchat.serve.flask.functions.gen_eval_report import generate_report
+from fastchat.serve.flask.functions.evalInterfaceV3 import gen_eval_report
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_PATH = os.path.join(app_dir, 'resources', 'data_config.json')
@@ -245,6 +248,7 @@ def get_report():
 
 @app.route('/run_evaluate', methods=['POST'])
 def run_evaluate():
+    set_gpu()
     global ray
     data = request.json
     params_config = {
@@ -286,7 +290,20 @@ def run_evaluate():
         start_time = get_start_time()
         outputs = []
         for data_id in data_ids:
-            question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
+            if data_id not in DATA_IDS:
+                if is_non_empty_file(data_id):
+                    return json.dumps({"error": f"data_id {data_id} not found"}), 400
+                new_data_dir = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id.split("/")[-1].split(".")[0]))
+                new_answer_dir = os.path.join(new_data_dir, "model_answer")
+                if not os.path.exists(new_data_dir) or not os.path.isdir(new_data_dir):
+                    os.makedirs(new_data_dir, exist_ok=True)
+                    os.makedirs(new_answer_dir, exist_ok=True)
+                    copy_file(data_id, new_data_dir)
+                    os.rename(os.path.join(new_data_dir, data_id.split("/")[-1]), os.path.join(new_data_dir, "question.jsonl"))
+                    data_id = str(data_id.split("/")[-1].split(".")[0])
+                question_file = os.path.join(new_data_dir, "question.jsonl")
+            else:
+                question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
             for model_name, model_id in zip(model_names, model_ids):
                 model_name_saved = model_name.split('/')[-1]
                 output_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "model_answer",
@@ -348,7 +365,6 @@ def get_eval_report():
     log_json = None
     question_file = []
     model_name = []
-    time_suffix = ""
     params_comfig = {
         'task_id': (None, str)
     }
@@ -362,8 +378,7 @@ def get_eval_report():
             log_json = log
             break
     if is_non_empty_file(f"./report/report_{task_id}.md"):
-        with open(f"./report/report_{task_id}.md", 'r', encoding="utf-8") as f:
-            report = f.read()
+        pass
     else:
         for data_id in log_json[task_id]["data_ids"]:
             question_file.append(os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl"))
@@ -371,11 +386,14 @@ def get_eval_report():
             model_name.append(model.split("/")[-1])
         time_suffix = log_json[task_id]["outputs"][0]["output"].split("/")[-1].split("_")[-1].split(".")[0]
         gen_eval_report(task_id, question_file, model_name, time_suffix)
-    return "None"
+    with open(f"./report/report_{task_id}.md", 'r', encoding="utf-8") as f:
+        report = f.read()
+    return report
 
 
 @app.route('/run_generate_eval', methods=['POST'])
 def run_generate_eval():
+
     return None
 
 
