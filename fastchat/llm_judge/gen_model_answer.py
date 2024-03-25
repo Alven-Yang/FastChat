@@ -18,6 +18,7 @@ from vllm.model_executor.parallel_utils.parallel_state import destroy_model_para
 
 from fastchat.llm_judge.common import load_questions, temperature_config
 from fastchat.model import load_model, get_conversation_template
+from fastchat.serve.flask.flask_utils import get_free_gpus
 from fastchat.utils import str_to_torch_dtype
 from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
 from modelscope import GenerationConfig
@@ -94,6 +95,7 @@ def get_model_answers(
         cache_dir="/root/autodl-tmp/model",
 ):
     print("model_path:", model_path, "model_id:", model_id, "revision:", revision)
+    free_gpus = get_free_gpus()
     try:
         model_dir = snapshot_download(model_path, cache_dir=cache_dir, revision=revision, local_files_only=True)
     except ValueError:
@@ -102,7 +104,7 @@ def get_model_answers(
     print("model_dir:", model_dir)
     # llm = LLM(model=model_dir, trust_remote_code=True)
     try:
-        llm = LLM(model=model_dir, trust_remote_code=True)
+        llm = LLM(model=model_dir, trust_remote_code=True, tensor_parallel_size=len(free_gpus))
     except (ModuleNotFoundError, AttributeError, torch.cuda.OutOfMemoryError) as e:
         print(e)
         destroy_model_parallel()
@@ -140,6 +142,7 @@ def get_model_answers(
                 "reference_answer": question["reference_answer"],
                 "question_type": question["question_type"],
                 "category": question['category'],
+                "dimension": question.get("dimension", None),
                 # "field": question['field'],
                 # "law": question['law'],
                 "prompt": prompt,

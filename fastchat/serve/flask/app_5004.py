@@ -19,7 +19,7 @@ import shutil
 
 
 from fastchat.llm_judge.gen_model_answer import run_eval
-from fastchat.serve.flask.utils import calculate_model_scores2
+from fastchat.serve.flask.utils import calculate_model_scores_dimension, calculate_model_scores_category
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
@@ -87,7 +87,7 @@ def get_modelpage_detail():
     DATA_IDS = list(DATA_DICT.keys())
     print("model_name:", MODEL_NAME, "data_ids:", DATA_IDS)
     # overall_report = calculate_model_scores(DATA_IDS)
-    report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
+    report_per_model, report_per_data = calculate_model_scores_category("moral_bench_test5")
     print("report_per_model:", report_per_model)
     print("report_per_data:", report_per_data)
     # sys_prompt = get_system_prompt()
@@ -142,7 +142,7 @@ def get_datapage_detail():
         return jsonify({"error": "Missing required fields in the request"}), 400
     DATA_ID = data.get('data_id')
     DATA_RENAME = RENAME_DATA.get(DATA_ID, None)
-    report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
+    report_per_model, report_per_data = calculate_model_scores_category("moral_bench_test5")
 
     result = {
         "request_id": request_id,
@@ -174,7 +174,7 @@ def get_leaderboard_detail():
     filtered_data = ["moral_bench_test5"]
     print("filtered_cates:", filtered_cates, "filtered_models:", filtered_models, "filtered_data:", filtered_data)
 
-    report_per_model, report_per_data = calculate_model_scores2("moral_bench_test5")
+    report_per_model, report_per_data = calculate_model_scores_category("moral_bench_test5")
     aggregated_scores = {}
     for model_name in filtered_models:
         if model_name not in report_per_model:
@@ -291,7 +291,7 @@ def run_evaluate():
         outputs = []
         for data_id in data_ids:
             if data_id not in DATA_IDS:
-                if is_non_empty_file(data_id):
+                if not is_non_empty_file(data_id):
                     return json.dumps({"error": f"data_id {data_id} not found"}), 400
                 new_data_dir = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id.split("/")[-1].split(".")[0]))
                 new_answer_dir = os.path.join(new_data_dir, "model_answer")
@@ -351,6 +351,24 @@ def run_evaluate():
         log_path = os.path.join(log_folder, "eval_log.jsonl")
         print("log_path:", log_path)
         append_dict_to_jsonl(log_path, {request_id: result})
+
+        scores = []
+        scores_out = []
+        for data_id in data_ids:
+            scores.append(calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0]))
+            print(scores)
+            print(data_id)
+        for score in scores:
+            # score:tuple
+            for item_dict in score:
+                for key in item_dict.keys():
+                    if start_time in key:
+                        scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
+                                                 "total_questions": item_dict[key]["total_questions"]},
+                                           "score_total": item_dict[key]["score_total"],
+                                           "score_per_category": dict(item_dict[key]["score_per_category"])
+                                           })
+        result["scores"] = scores_out
         return jsonify(result)
     except subprocess.CalledProcessError:
         return jsonify({"error": "Script execution failed"}), 500
@@ -366,8 +384,10 @@ def get_eval_report():
     params_comfig = {
         'task_id': (None, str)
     }
+
     params = parse_params(data, params_comfig)
     task_id = params.get('task_id')
+    print(task_id,str(task_id))
     with open(os.path.join(log_folder, "eval_log.jsonl"), 'r', encoding="utf-8") as f:
         log_lines = list(f)
     for line in reversed(log_lines):
@@ -375,18 +395,24 @@ def get_eval_report():
         if task_id in log.keys():
             log_json = log
             break
-    if is_non_empty_file(f"./report/report_{task_id}.md"):
-        pass
-    else:
-        for data_id in log_json[task_id]["data_ids"]:
-            question_file.append(os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl"))
-        for model in log_json[task_id]["model_names"]:
-            model_name.append(model.split("/")[-1])
-        time_suffix = log_json[task_id]["outputs"][0]["output"].split("/")[-1].split("_")[-1].split(".")[0]
-        gen_eval_report(task_id, question_file, model_name, time_suffix)
-    with open(f"./report/report_{task_id}.md", 'r', encoding="utf-8") as f:
-        report = f.read()
-    return report
+    try:
+        if is_non_empty_file(f"./report/report_{task_id}.md"):
+            pass
+        else:
+            for data_id in log_json[task_id]["data_ids"]:
+                question_file.append(os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl"))
+            for model in log_json[task_id]["model_names"]:
+                model_name.append(model.split("/")[-1])
+            time_suffix = log_json[task_id]["outputs"][0]["output"].split("/")[-1].split("_")[-1].split(".")[0]
+            gen_eval_report(task_id, question_file, model_name, time_suffix)
+
+            with open(f"./report/report_{task_id}.md", 'r', encoding="utf-8") as f:
+                report = f.read()
+            return report
+    except:
+        with open(f"./report/report.md", 'r', encoding="utf-8") as f:
+            report = f.read()
+        return report
 
 
 @app.route('/run_generate_eval', methods=['POST'])

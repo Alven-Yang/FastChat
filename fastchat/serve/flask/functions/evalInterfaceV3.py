@@ -338,8 +338,9 @@ def gen_eval_report(task_id, question_file_path_input, model_name_input, time_st
     gen_EvaluationReport(api_key_input, question_mapping_path_input, question_dir_path_input, model_list_input, time_stamp_input, task_id)
 
 
-
-
+if __name__ == "__main__":
+    gen_eval_report("12845bb1b484430b9395eafbadc624be", "../../../llm_judge/data/all_questions3/question.jsonl",
+                    ["Yi-6B-Chat"], "2024-03-22 09:51:34.jsonl")
 
 
 
