@@ -24,7 +24,7 @@ from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
                          calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid,
-                         set_gpu, copy_file)
+                         set_gpu, copy_file, set_all_gpus)
 from fastchat.llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
 from fastchat.serve.flask.functions.evalInterfaceV3 import gen_eval_report
 
@@ -248,7 +248,8 @@ def get_report():
 
 @app.route('/run_evaluate', methods=['POST'])
 def run_evaluate():
-    set_gpu()
+    free_gpus_num = len(get_free_gpus())
+    set_all_gpus()
     global ray
     data = request.json
     params_config = {
@@ -273,7 +274,7 @@ def run_evaluate():
     max_new_token = data.get('max_new_token', 1024)
     num_choices = data.get('num_choices', 1)
     num_gpus_per_model = data.get('num_gpus_per_model', 1)
-    num_gpus_total = data.get('num_gpus_total', 1)
+    num_gpus_total = data.get('num_gpus_total', free_gpus_num)
     max_gpu_memory = data.get('max_gpu_memory', 70)
     dtype = str_to_torch_dtype(data.get('dtype', None))
     cache_dir = os.environ.get('CACHE_DIR', "/home/Userlist/madehua/model/")
@@ -284,7 +285,6 @@ def run_evaluate():
         ray.init()
     else:
         ray = None
-    print("ray:", ray)
 
     try:
         start_time = get_start_time()
@@ -301,7 +301,7 @@ def run_evaluate():
                     copy_file(data_id, new_data_dir)
                     os.rename(os.path.join(new_data_dir, data_id.split("/")[-1]), os.path.join(new_data_dir, "question.jsonl"))
                 data_id = str(data_id.split("/")[-1].split(".")[0])
-                question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
+            question_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "question.jsonl")
             for model_name, model_id in zip(model_names, model_ids):
                 model_name_saved = model_name.split('/')[-1]
                 output_file = os.path.join(BASE_PATH, "llm_judge", "data", str(data_id), "model_answer",

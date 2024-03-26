@@ -95,7 +95,7 @@ def get_model_answers(
         cache_dir="/root/autodl-tmp/model",
 ):
     print("model_path:", model_path, "model_id:", model_id, "revision:", revision)
-    free_gpus = get_free_gpus()
+    free_gpu_num = len(get_free_gpus())
     try:
         model_dir = snapshot_download(model_path, cache_dir=cache_dir, revision=revision, local_files_only=True)
     except ValueError:
@@ -104,7 +104,7 @@ def get_model_answers(
     print("model_dir:", model_dir)
     # llm = LLM(model=model_dir, trust_remote_code=True)
     try:
-        llm = LLM(model=model_dir, trust_remote_code=True, tensor_parallel_size=len(free_gpus))
+        llm = LLM(model=model_dir, trust_remote_code=True, tensor_parallel_size=free_gpu_num-(free_gpu_num & 1))
     except (ModuleNotFoundError, AttributeError, torch.cuda.OutOfMemoryError) as e:
         print(e)
         destroy_model_parallel()
