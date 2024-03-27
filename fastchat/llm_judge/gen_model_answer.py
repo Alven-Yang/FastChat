@@ -56,26 +56,39 @@ def run_eval(
     #         get_model_answers
     #     ).remote
     # else:
-    get_answers_func = get_model_answers
+    # get_answers_func = get_model_answers
 
-    chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
-    ans_handles = []
-    for i in range(0, len(questions), chunk_size):
-        ans_handles.append(
-            get_answers_func(
-                model_path,
-                model_id,
-                questions[i : i + chunk_size],
-                answer_file,
-                max_new_token,
-                num_choices,
-                num_gpus_per_model,
-                max_gpu_memory,
-                dtype=dtype,
-                revision=revision,
-                cache_dir=cache_dir,
-            )
-        )
+    # chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
+    # ans_handles = []
+    # for i in range(0, len(questions), chunk_size):
+    #     ans_handles.append(
+    #         get_answers_func(
+    #             model_path,
+    #             model_id,
+    #             questions[i : i + chunk_size],
+    #             answer_file,
+    #             max_new_token,
+    #             num_choices,
+    #             num_gpus_per_model,
+    #             max_gpu_memory,
+    #             dtype=dtype,
+    #             revision=revision,
+    #             cache_dir=cache_dir,
+    #         )
+    #     )
+    get_model_answers(
+        model_path,
+        model_id,
+        questions,
+        answer_file,
+        max_new_token,
+        num_choices,
+        num_gpus_per_model,
+        max_gpu_memory,
+        dtype=dtype,
+        revision=revision,
+        cache_dir=cache_dir,
+    )
 
     # if use_ray:
     #     ray.get(ans_handles)
@@ -105,7 +118,7 @@ def get_model_answers(
     print("model_dir:", model_dir)
     # llm = LLM(model=model_dir, trust_remote_code=True)
     try:
-        llm = LLM(model=model_dir, trust_remote_code=True, tensor_parallel_size=free_gpu_num-(free_gpu_num & 1))
+        llm = LLM(model=model_dir, trust_remote_code=True, tensor_parallel_size=max((free_gpu_num-(free_gpu_num & 1)), 1))
     except (ModuleNotFoundError, AttributeError, torch.cuda.OutOfMemoryError) as e:
         print(e)
         destroy_model_parallel()

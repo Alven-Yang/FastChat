@@ -9,11 +9,18 @@ import string, random
 import uuid
 import torch
 import shutil
+from minio import Minio
+from minio.error import S3Error
+from collections import defaultdict
+# 从对象存储上生成下载文件链接
+import boto3
+from dotenv import load_dotenv
 
 sys.path.append("./fastchat")
-from collections import defaultdict
-from utils import calculate_model_scores, read_jsonl_files, calculate_model_scores_category
+from utils import calculate_model_scores, read_jsonl_files, calculate_model_scores_category, calculate_model_scores_dimension
 from llm_judge.report.assist1 import get_cache
+
+load_dotenv("./.env", verbose=True, override=True)
 
 
 def append_dict_to_jsonl(file_path, data_dict):
@@ -224,10 +231,85 @@ def copy_file(source_file, destination_folder):
 #     }
 
 
+# 上传文件到对象存储
+def upload_file(source_file,filename):
+    client = Minio(os.getenv("OSS_IP"),
+        access_key=os.getenv("OSS_ACCESS_KEY_ID"),
+        secret_key=os.getenv("OSS_ACCESS_KEY_SECRET"),
+        secure=False,
+    )
+    bucket_name = "generation"
+    try:
+        # Make the bucket if it doesn't exist.
+        found = client.bucket_exists(bucket_name)
+        if not found:
+            client.make_bucket(bucket_name)
+            print("Created bucket", bucket_name)
+        else:
+            print("Bucket", bucket_name, "already exists")
+
+        # 获取文件名
+        source_filename = filename
+
+        # 上传文件
+        client.fput_object(
+            bucket_name, source_filename, source_file,
+        )
+        print(
+            source_file, "successfully uploaded as object",
+            source_filename, "to bucket", bucket_name,
+        )
+        return {"status": "success"}
+    except S3Error as err:
+        print("Error:", err)
+        return {"status": "error", "message": str(err)}
+
+
+# 获取下载链接
+def generate_presigned_url(destination_file):
+    # Configure the S3 client
+    s3 = boto3.client("s3",
+        aws_access_key_id="dmeinbi",
+        aws_secret_access_key="Denb-emd98-semb",
+        endpoint_url="http://192.144.141.249:52300",
+    )
+    bucket_name = "generation"
+
+    # 生成下载链接
+    presigned_url = s3.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={
+            "Bucket": bucket_name,
+            "Key": destination_file,
+        },
+        ExpiresIn=100*360*24*3600,  # 设置链接有效时间
+    )
+    print("Presigned URL for downloading the file:", presigned_url)
+
+    return presigned_url
+
+
+
 if __name__ == '__main__':
-    ans_json = []
-    with open("../../llm_judge/data/all_questions2/model_answer/Baichuan2-7B-Chat_2024-03-21 16:06:56.jsonl", "r", encoding="utf-8") as f:
-        for line in f:
-            ans_json.append(json.loads(line))
-    ans = {"Baichuan2-7B-Chat": ans_json}
-    print(calculate_score(ans))
+    scores = []
+    scores_out = []
+    for data_id in ["all_questions3"]:
+        scores.append(calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0]))
+        for score in scores:
+            # score:tuple
+            for item_dict in score:
+                for key in item_dict.keys():
+                    if "2024-03-22" in key:                        
+                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}.json", "w", encoding="utf-8") as f:
+                            json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
+                            upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}.json", f"{key}.json")
+                            
+                        scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
+                                                 "total_questions": item_dict[key]["total_questions"]},
+                                           "score_total": item_dict[key]["score_total"],
+                                           "score_per_dimension": dict(item_dict[key]["score_per_category"]),
+                                           "error_file_path": generate_presigned_url(f"{key}.json")
+                                           })
+
+    print(scores[0][0], len(scores))
+    # print(scores_out, len(scores_out))

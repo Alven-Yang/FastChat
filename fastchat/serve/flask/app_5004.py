@@ -249,7 +249,7 @@ def get_report():
 @app.route('/run_evaluate', methods=['POST'])
 def run_evaluate():
     free_gpus_num = len(get_free_gpus())
-    set_all_gpus()
+    # set_all_gpus()
     global ray
     data = request.json
     params_config = {
@@ -282,9 +282,13 @@ def run_evaluate():
     failed = []
     if num_gpus_total // num_gpus_per_model > 1:
         import ray
-        ray.init()
+        ray.init(
+                    _temp_dir='/home/Userlist/yanganwen/temp/ray',  # 指定新的对象存储路径
+                    object_store_memory=10000000000  # 为对象存储分配10GB内存
+                )
     else:
         ray = None
+    print("ray:", ray)
 
     try:
         start_time = get_start_time()
@@ -427,4 +431,4 @@ def cal_scores():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=5005)
+    app.run(host="0.0.0.0", debug=True, port=5004)
