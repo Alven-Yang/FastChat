@@ -17,6 +17,7 @@ import boto3
 from dotenv import load_dotenv
 
 sys.path.append("./fastchat")
+from collections import defaultdict
 from utils import calculate_model_scores, read_jsonl_files, calculate_model_scores_category, calculate_model_scores_dimension
 from llm_judge.report.assist1 import get_cache
 
@@ -303,13 +304,16 @@ if __name__ == '__main__':
                         with open(f"/home/Userlist/yanganwen/temp/oss/{key}.json", "w", encoding="utf-8") as f:
                             json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
                             upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}.json", f"{key}.json")
-                            
+                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", "w", encoding="utf-8") as f:
+                            json.dump(item_dict[key]["result"], f, ensure_ascii=False, indent=4)
+                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", f"{key}_result.json")
                         scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
                                                  "total_questions": item_dict[key]["total_questions"]},
                                            "score_total": item_dict[key]["score_total"],
                                            "score_per_dimension": dict(item_dict[key]["score_per_category"]),
-                                           "error_file_path": generate_presigned_url(f"{key}.json")
+                                           "error_file_path": generate_presigned_url(f"{key}.json"),
+                                           "result": generate_presigned_url(f"{key}_result.json")
                                            })
 
-    print(scores[0][0], len(scores))
-    # print(scores_out, len(scores_out))
+    # print(scores[0][0], len(scores))
+    print(scores_out[0], len(scores_out))

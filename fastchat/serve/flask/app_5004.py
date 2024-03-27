@@ -16,15 +16,15 @@ import time
 import datetime
 import pytz
 import shutil
-
-sys.path.append("./fastchat")
+ 
+# sys.path.append("./fastchat")
 from fastchat.llm_judge.gen_model_answer import run_eval
 from utils import calculate_model_scores_dimension, calculate_model_scores_category
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
                          calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid,
-                         set_gpu, copy_file, set_all_gpus)
+                         set_gpu, copy_file, set_all_gpus, generate_presigned_url, upload_file)
 from llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
 from serve.flask.functions.evalInterfaceV3 import gen_eval_report
 
@@ -248,8 +248,8 @@ def get_report():
 
 @app.route('/run_evaluate', methods=['POST'])
 def run_evaluate():
+    free_gpus = get_free_gpus()
     free_gpus_num = len(get_free_gpus())
-    set_all_gpus()
     global ray
     data = request.json
     params_config = {
@@ -282,9 +282,14 @@ def run_evaluate():
     failed = []
     if num_gpus_total // num_gpus_per_model > 1:
         import ray
-        ray.init()
+        ray.init(
+            _temp_dir='/home/Userlist/yanganwen/temp/ray',  # 指定新的对象存储路径
+            object_store_memory=10000000000,  # 为对象存储分配10GB内存
+            num_gpus = free_gpus_num
+        )
     else:
         ray = None
+    print("ray:", ray)
 
     try:
         start_time = get_start_time()
@@ -312,15 +317,16 @@ def run_evaluate():
                 else:
                     print("eval model:", model_name, model_id)
                     try:
-                        run_eval(
-                            ray=ray,
-                            model_path=model_name, model_id=model_id, question_file=question_file,
-                            question_begin=question_begin, question_end=question_end,
-                            answer_file=output_file, max_new_token=max_new_token,
-                            num_choices=num_choices, num_gpus_per_model=num_gpus_per_model,
-                            num_gpus_total=num_gpus_total, max_gpu_memory=max_gpu_memory,
-                            dtype=dtype, revision=revision, cache_dir=cache_dir
-                        )
+                        with torch.cuda.device(free_gpus[0]):
+                            run_eval(
+                                ray=ray,
+                                model_path=model_name, model_id=model_id, question_file=question_file,
+                                question_begin=question_begin, question_end=question_end,
+                                answer_file=output_file, max_new_token=max_new_token,
+                                num_choices=num_choices, num_gpus_per_model=num_gpus_per_model,
+                                num_gpus_total=num_gpus_total, max_gpu_memory=max_gpu_memory,
+                                dtype=dtype, revision=revision, cache_dir=cache_dir
+                            )
                     except AttributeError as e:
                         print("eval model error:", model_name, model_id)
                         print(e)
@@ -356,17 +362,23 @@ def run_evaluate():
         scores_out = []
         for data_id in data_ids:
             scores.append(calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0]))
-            print(scores)
-            print(data_id)
         for score in scores:
             # score:tuple
             for item_dict in score:
                 for key in item_dict.keys():
                     if start_time in key:
+                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_erexa.json", "w", encoding="utf-8") as f:
+                            json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
+                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_erexa.json", f"{key}_erexa.json")
+                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", "w", encoding="utf-8") as f:
+                            json.dump(item_dict[key]["result"], f, ensure_ascii=False, indent=4)
+                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", f"{key}_result.json")
                         scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
                                                  "total_questions": item_dict[key]["total_questions"]},
                                            "score_total": item_dict[key]["score_total"],
-                                           "score_per_category": dict(item_dict[key]["score_per_category"])
+                                           "score_per_category": dict(item_dict[key]["score_per_category"]),
+                                           "error_examples": generate_presigned_url(f"{key}_erexa.json"),
+                                           "result": generate_presigned_url(f"{key}_result.json")
                                            })
         result["scores"] = scores_out
         return jsonify(result)
@@ -424,6 +436,12 @@ def run_generate_eval():
 @app.route('/cal_scores', methods=['POST'])
 def cal_scores():
     data = request.json
+
+
+@app.route('/upload_datasets', methods=['POST'])
+def upload_datasets():
+    
+    return 0
 
 
 if __name__ == "__main__":

@@ -105,7 +105,8 @@ def calculate_model_scores_dimension(bench_name):
         if model not in report_per_model:
             report_per_model[model] = {"total_correct": 0, "total_questions": 0,
                                        "score_per_category": defaultdict(lambda: {"correct": 0, "total": 0}),
-                                       "scores_per_data_id": defaultdict(lambda: {"correct": 0, "total": 0})}
+                                       "scores_per_data_id": defaultdict(lambda: {"correct": 0, "total": 0}),
+                                       "result": []}
         for answer in answers:
             if len(answer["reference_answer"]) > 1:
                 # print("invalid reference answer", answer)
@@ -133,6 +134,7 @@ def calculate_model_scores_dimension(bench_name):
             # report_per_model[model]["scores_per_data_id"][field]["total"] += 1
             report_per_model[model]["total_correct"] += is_correct
             report_per_model[model]["total_questions"] += 1
+            report_per_model[model]["result"].append(is_correct)
 
             # if field not in report_per_data:
             #     report_per_data[field] = {}
@@ -156,7 +158,7 @@ def calculate_model_scores_dimension(bench_name):
             }
 
         data["score_total"] = data["total_correct"] / data["total_questions"] if data["total_questions"] > 0 else 0
-        data["error_examples"] = error_results[:3]
+        data["error_examples"] = error_results
 
     for field, models in report_per_data.items():
         for model, data in models.items():
