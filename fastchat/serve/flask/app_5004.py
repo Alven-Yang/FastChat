@@ -1,5 +1,5 @@
 import json
-import os
+import os, sys
 import uuid
 from collections import defaultdict, OrderedDict
 from pprint import pprint
@@ -17,9 +17,9 @@ import datetime
 import pytz
 import shutil
 
-
+sys.path.append("./fastchat")
 from fastchat.llm_judge.gen_model_answer import run_eval
-from fastchat.serve.flask.utils import calculate_model_scores_dimension, calculate_model_scores_category
+from utils import calculate_model_scores_dimension, calculate_model_scores_category
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
