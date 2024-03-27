@@ -1,5 +1,5 @@
 import json
-import os
+import os, sys
 import uuid
 from collections import defaultdict, OrderedDict
 from pprint import pprint
@@ -17,16 +17,16 @@ import datetime
 import pytz
 import shutil
 
-
-from fastchat.llm_judge.gen_model_answer import run_eval
-from fastchat.serve.flask.utils import calculate_model_scores_dimension, calculate_model_scores_category
+sys.path.append("./fastchat")
+from llm_judge.gen_model_answer import run_eval
+from serve.flask.utils import calculate_model_scores_dimension, calculate_model_scores_category
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
                          calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid,
                          set_gpu, copy_file, set_all_gpus)
-from fastchat.llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
-from fastchat.serve.flask.functions.evalInterfaceV3 import gen_eval_report
+from llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
+from serve.flask.functions.evalInterfaceV3 import gen_eval_report
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_PATH = os.path.join(app_dir, 'resources', 'data_config.json')
@@ -427,4 +427,4 @@ def cal_scores():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=5004)
+    app.run(host="0.0.0.0", debug=True, port=5005)

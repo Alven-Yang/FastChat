@@ -1,4 +1,4 @@
-import os
+import os, sys
 import subprocess
 import json
 import time
@@ -9,9 +9,11 @@ import string, random
 import uuid
 import torch
 import shutil
+
+sys.path.append("./fastchat")
 from collections import defaultdict
-from fastchat.serve.flask.utils import calculate_model_scores, read_jsonl_files, calculate_model_scores_category
-from fastchat.llm_judge.report.assist1 import get_cache
+from utils import calculate_model_scores, read_jsonl_files, calculate_model_scores_category
+from llm_judge.report.assist1 import get_cache
 
 
 def append_dict_to_jsonl(file_path, data_dict):
@@ -37,7 +39,7 @@ def get_free_gpus():
         lines = output.strip().split("\n")
         for line in lines:
             index, memory_used = line.split(", ")
-            if int(memory_used) <= 100:
+            if int(memory_used) <= 300:
                 free_gpus.append(int(index))
 
         return free_gpus

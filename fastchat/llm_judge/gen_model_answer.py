@@ -5,7 +5,7 @@ python3 gen_model_answer.py --model-path lmsys/fastchat-t5-3b-v1.0 --model-id fa
 """
 import argparse
 import json
-import os
+import os, sys
 import random
 import time
 import gc
@@ -16,9 +16,10 @@ from tqdm import tqdm
 from vllm import LLM, SamplingParams
 from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
 
-from fastchat.llm_judge.common import load_questions, temperature_config
-from fastchat.model import load_model, get_conversation_template
-from fastchat.serve.flask.flask_utils import get_free_gpus
+sys.path.append("./fastchat")
+from llm_judge.common import load_questions, temperature_config
+from model import load_model, get_conversation_template
+from serve.flask.flask_utils import get_free_gpus
 from fastchat.utils import str_to_torch_dtype
 from modelscope import AutoModelForCausalLM, AutoTokenizer, snapshot_download
 from modelscope import GenerationConfig
@@ -48,14 +49,14 @@ def run_eval(
     # Split the question file into `num_gpus` files
     assert num_gpus_total % num_gpus_per_model == 0
 
-    use_ray = num_gpus_total // num_gpus_per_model > 1
+    # use_ray = num_gpus_total // num_gpus_per_model > 1
 
-    if use_ray and ray is not None:
-        get_answers_func = ray.remote(num_gpus=num_gpus_per_model)(
-            get_model_answers
-        ).remote
-    else:
-        get_answers_func = get_model_answers
+    # if use_ray and ray is not None:
+    #     get_answers_func = ray.remote(num_gpus=num_gpus_per_model)(
+    #         get_model_answers
+    #     ).remote
+    # else:
+    get_answers_func = get_model_answers
 
     chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
     ans_handles = []
@@ -76,8 +77,8 @@ def run_eval(
             )
         )
 
-    if use_ray:
-        ray.get(ans_handles)
+    # if use_ray:
+    #     ray.get(ans_handles)
 
 
 @torch.inference_mode()
