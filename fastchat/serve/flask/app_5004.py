@@ -25,8 +25,8 @@ from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_
                          safe_literal_eval, generate_random_model_id, is_non_empty_file, gen_eval_report,
                          calculate_score, get_total_scores, get_report_by_names, get_report_all, random_uuid,
                          set_gpu, copy_file, set_all_gpus)
-from fastchat.llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
-from fastchat.serve.flask.functions.evalInterfaceV3 import gen_eval_report
+from llm_judge.report.assist1 import generate_report, get_system_prompt, get_cache
+from serve.flask.functions.evalInterfaceV3 import gen_eval_report
 
 app_dir = os.path.abspath(os.path.dirname(__file__))
 DATA_PATH = os.path.join(app_dir, 'resources', 'data_config.json')

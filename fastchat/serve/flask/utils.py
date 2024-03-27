@@ -241,21 +241,5 @@ def generate_random_identifier():
     return ''.join(random.choice(chars) for _ in range(16))
 
 
-if __name__ == "__main__":
-    scores = []
-    scores_out = []
-    for data_id in ["all_questions3"]:
-        scores.append(calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0]))
-        for score in scores:
-            # score:tuple
-            for item_dict in score:
-                for key in item_dict.keys():
-                    if "2024-03-22" in key:
-                        scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
-                                                 "total_questions": item_dict[key]["total_questions"]},
-                                           "score_total": item_dict[key]["score_total"],
-                                           "score_per_category": dict(item_dict[key]["score_per_category"])
-                                           })
 
-    print(scores, len(scores))
-    print(scores_out, len(scores_out))
+
