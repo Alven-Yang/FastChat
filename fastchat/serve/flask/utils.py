@@ -242,6 +242,9 @@ def generate_random_identifier():
     chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
     return ''.join(random.choice(chars) for _ in range(16))
 
-
+if __name__ == "__main__":
+    a,b = calculate_model_scores_category("moral_bench_test5")
+    print(a.keys())
+    print(a["Llama-2-7b-chat-ms"])
 
 

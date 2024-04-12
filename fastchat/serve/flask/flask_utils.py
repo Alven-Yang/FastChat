@@ -9,6 +9,7 @@ import string, random
 import uuid
 import torch
 import shutil
+import numpy as np
 from minio import Minio
 from minio.error import S3Error
 from collections import defaultdict
@@ -294,26 +295,56 @@ def generate_presigned_url(destination_file):
 if __name__ == '__main__':
     scores = []
     scores_out = []
-    for data_id in ["all_questions3"]:
-        scores.append(calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0]))
-        for score in scores:
-            # score:tuple
-            for item_dict in score:
-                for key in item_dict.keys():
-                    if "2024-03-22" in key:                        
-                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}.json", "w", encoding="utf-8") as f:
-                            json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
-                            upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}.json", f"{key}.json")
-                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", "w", encoding="utf-8") as f:
-                            json.dump(item_dict[key]["result"], f, ensure_ascii=False, indent=4)
-                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", f"{key}_result.json")
-                        scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
-                                                 "total_questions": item_dict[key]["total_questions"]},
-                                           "score_total": item_dict[key]["score_total"],
-                                           "score_per_dimension": dict(item_dict[key]["score_per_category"]),
-                                           "error_file_path": generate_presigned_url(f"{key}.json"),
-                                           "result": generate_presigned_url(f"{key}_result.json")
-                                           })
+    for data_id in ["questions_glm","questions_gpt","seed_questions1"]:
+        scores.append({data_id : calculate_model_scores_dimension(data_id.split("/")[-1].split(".")[0])})
+    # for score in scores:
+    #     # score:tuple
+    #     for item_dict in score:
+    #         for key in item_dict.keys():                       
+    #                 # with open(f"/home/Userlist/yanganwen/temp/oss/{key}.json", "w", encoding="utf-8") as f:
+    #                 #     print("1")
+    #                 #     json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
+    #                 #     upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}.json", f"{key}.json")
+    #                 #     print("2")
+    #                 # with open(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", "w", encoding="utf-8") as f:
+    #                 #     json.dump(item_dict[key]["result"], f, ensure_ascii=False, indent=4)
+    #                 # upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", f"{key}_result.json")
+    #                 scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
+    #                                             "total_questions": item_dict[key]["total_questions"]},
+    #                                     "score_total": item_dict[key]["score_total"],
+    #                                     "score_per_dimension": dict(item_dict[key]["score_per_category"]),
+    #                                     "error_file_path": generate_presigned_url(f"{key}.json"),
+    #                                     "result": generate_presigned_url(f"{key}_result.json")
+    #                                     })
+    result = {}
+    for data_set_scores in scores:
+        # print(type(data_set_scores), data_set_scores)
+        model_score = []
+        for data_id, model_scores in data_set_scores.items():
+            score_all = []            
+            for model, score in model_scores[0].items():
+                score_all.append(score["result"])
+                model_score.append(score["score_total"])
+            print(model_score)
+            score_all = np.array(score_all).astype(int)
+            score_all_re = score_all.reshape(-1, len(score["result"]))
+            score_all_re1 = np.mean(score_all_re, axis=1)
+            variances = np.var(score_all_re1, axis=0)
+            result[data_id] = {}
+            result[data_id]["variance"] = variances
+            result[data_id]["mean"] = np.mean(np.array(model_score))
+            result[data_id]["var"] = np.var(np.array(model_score))
+            result[data_id]["1"] = score_all_re1
 
+    index_varis0 = {}
+    # for data_id, model_var in result.items():
+    #     index_varis0[data_id] = [index for index, value in enumerate(model_var["variance"]) if value == 0]
+    print(index_varis0, result)
+
+    # print(type(result))
+    # with open("var.json", "w") as f:
+    #     json.dump(result, f, indent=4)
     # print(scores[0][0], len(scores))
-    print(scores_out[0], len(scores_out))
+    # with open("scores.json", "w", encoding="utf-8") as f:
+    #     json.dump(scores, f, indent=4, ensure_ascii=False)
+    # print(scores_out[0], len(scores_out))

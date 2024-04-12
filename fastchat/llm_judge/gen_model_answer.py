@@ -49,49 +49,50 @@ def run_eval(
     # Split the question file into `num_gpus` files
     assert num_gpus_total % num_gpus_per_model == 0
 
-    use_ray = num_gpus_total // num_gpus_per_model > 1
+    get_model_answers(
+        model_path,
+        model_id,
+        questions,
+        answer_file,
+        max_new_token,
+        num_choices,
+        num_gpus_per_model,
+        max_gpu_memory,
+        dtype=dtype,
+        revision=revision,
+        cache_dir=cache_dir,
+    )
 
-    if use_ray and ray is not None:
-        get_answers_func = ray.remote(num_gpus=num_gpus_per_model)(
-            get_model_answers
-        ).remote
-    else:
-        get_answers_func = get_model_answers
+    # use_ray = num_gpus_total // num_gpus_per_model > 1
 
-    chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
-    ans_handles = []
-    for i in range(0, len(questions), chunk_size):
-        ans_handles.append(
-            get_answers_func(
-                model_path,
-                model_id,
-                questions[i : i + chunk_size],
-                answer_file,
-                max_new_token,
-                num_choices,
-                num_gpus_per_model,
-                max_gpu_memory,
-                dtype=dtype,
-                revision=revision,
-                cache_dir=cache_dir,
-            )
-        )
-    # get_model_answers(
-    #     model_path,
-    #     model_id,
-    #     questions,
-    #     answer_file,
-    #     max_new_token,
-    #     num_choices,
-    #     num_gpus_per_model,
-    #     max_gpu_memory,
-    #     dtype=dtype,
-    #     revision=revision,
-    #     cache_dir=cache_dir,
-    # )
+    # if use_ray and ray is not None:
+    #     get_answers_func = ray.remote(num_gpus=num_gpus_per_model)(
+    #         get_model_answers
+    #     ).remote
+    # else:
+    #     get_answers_func = get_model_answers
 
-    if use_ray:
-        ray.get(ans_handles)
+    # chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
+    # ans_handles = []
+    # for i in range(0, len(questions), chunk_size):
+    #     ans_handles.append(
+    #         get_answers_func(
+    #             model_path,
+    #             model_id,
+    #             questions[i : i + chunk_size],
+    #             answer_file,
+    #             max_new_token,
+    #             num_choices,
+    #             num_gpus_per_model,
+    #             max_gpu_memory,
+    #             dtype=dtype,
+    #             revision=revision,
+    #             cache_dir=cache_dir,
+    #         )
+    #     )
+
+    # if use_ray:
+    #     ray.get(ans_handles)
 
 
 @torch.inference_mode()

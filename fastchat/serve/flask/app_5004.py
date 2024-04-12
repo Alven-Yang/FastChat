@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict, OrderedDict
 from pprint import pprint
 import GPUtil
+import numpy as np
 import pandas as pd
 from io import StringIO
 import ast
@@ -16,9 +17,9 @@ import time
 import datetime
 import pytz
 import shutil
- 
-# sys.path.append("./fastchat")
-from fastchat.llm_judge.gen_model_answer import run_eval
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from llm_judge.gen_model_answer import run_eval
 from utils import calculate_model_scores_dimension, calculate_model_scores_category
 from fastchat.utils import str_to_torch_dtype
 from flask_utils import (get_free_gpus, append_dict_to_jsonl, get_end_time, get_start_time, parse_params,
@@ -41,6 +42,7 @@ MODEL_PATH = os.path.join(app_dir, 'resources', 'model_config.json')
 with open(MODEL_PATH) as file:
     MODEL_JSON = json.load(file)
 MODEL_DICT = {model["name"].split('/')[-1]: model for model in MODEL_JSON["models"]}
+print("MODEL_DICT:", MODEL_DICT)
 MODEL_NAMES = [model['name'] for model in MODEL_JSON["models"]]
 MODEL_IDS = [model['model_id'] for model in MODEL_JSON["models"]]
 BASE_PATH = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -156,6 +158,7 @@ def get_datapage_detail():
 
 @app.route('/get_leaderboard_detail', methods=['POST'])
 def get_leaderboard_detail():
+    print("get_leaderboard_detail_visablessssssssss")
     CATEGORY = ["合规性", "公平性", "知识产权", "隐私保护", "可信度"]
     filter_params = request.json
     categories = filter_params.get('categories', None)
@@ -289,7 +292,7 @@ def run_evaluate():
         )
     else:
         ray = None
-    print("ray:", ray)
+    # print("ray:", ray)
 
     try:
         start_time = get_start_time()
@@ -317,16 +320,15 @@ def run_evaluate():
                 else:
                     print("eval model:", model_name, model_id)
                     try:
-                        with torch.cuda.device(free_gpus[0]):
-                            run_eval(
-                                ray=ray,
-                                model_path=model_name, model_id=model_id, question_file=question_file,
-                                question_begin=question_begin, question_end=question_end,
-                                answer_file=output_file, max_new_token=max_new_token,
-                                num_choices=num_choices, num_gpus_per_model=num_gpus_per_model,
-                                num_gpus_total=num_gpus_total, max_gpu_memory=max_gpu_memory,
-                                dtype=dtype, revision=revision, cache_dir=cache_dir
-                            )
+                        run_eval(
+                            ray=ray,
+                            model_path=model_name, model_id=model_id, question_file=question_file,
+                            question_begin=question_begin, question_end=question_end,
+                            answer_file=output_file, max_new_token=max_new_token,
+                            num_choices=num_choices, num_gpus_per_model=num_gpus_per_model,
+                            num_gpus_total=num_gpus_total, max_gpu_memory=max_gpu_memory,
+                            dtype=dtype, revision=revision, cache_dir=cache_dir
+                        )
                     except AttributeError as e:
                         print("eval model error:", model_name, model_id)
                         print(e)
@@ -367,18 +369,18 @@ def run_evaluate():
             for item_dict in score:
                 for key in item_dict.keys():
                     if start_time in key:
-                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_erexa.json", "w", encoding="utf-8") as f:
+                        with open(f"/home/Userlist/yanganwen/temp/oss/error_examples/{key}_erexa.json", "w", encoding="utf-8") as f:
                             json.dump(item_dict[key]["error_examples"], f, ensure_ascii=False, indent=4)
-                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_erexa.json", f"{key}_erexa.json")
-                        with open(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", "w", encoding="utf-8") as f:
+                        # upload_file(f"/home/Userlist/yanganwen/temp/oss/error_examples/{key}_erexa.json", f"{key}_erexa.json")
+                        with open(f"/home/Userlist/yanganwen/temp/oss/result/{key}_result.json", "w", encoding="utf-8") as f:
                             json.dump(item_dict[key]["result"], f, ensure_ascii=False, indent=4)
-                        upload_file(f"/home/Userlist/yanganwen/temp/oss/{key}_result.json", f"{key}_result.json")
+                        # upload_file(f"/home/Userlist/yanganwen/temp/oss/result/{key}_result.json", f"{key}_result.json")
                         scores_out.append({key: {"total_correct": item_dict[key]["total_correct"],
                                                  "total_questions": item_dict[key]["total_questions"]},
                                            "score_total": item_dict[key]["score_total"],
                                            "score_per_category": dict(item_dict[key]["score_per_category"]),
-                                           "error_examples": generate_presigned_url(f"{key}_erexa.json"),
-                                           "result": generate_presigned_url(f"{key}_result.json")
+                                        #    "error_examples": generate_presigned_url(f"{key}_erexa.json"),
+                                        #    "result": generate_presigned_url(f"{key}_result.json")
                                            })
         result["scores"] = scores_out
         return jsonify(result)
@@ -396,7 +398,7 @@ def get_eval_report():
     params_comfig = {
         'task_id': (None, str)
     }
-
+    print("data",data)
     params = parse_params(data, params_comfig)
     task_id = params.get('task_id')
     print(task_id,str(task_id))
@@ -436,6 +438,35 @@ def run_generate_eval():
 @app.route('/cal_scores', methods=['POST'])
 def cal_scores():
     data = request.json
+    params_config = {
+        "data_ids": ("[]", safe_literal_eval)
+    }
+    params = parse_params(data, params_config)
+    data_ids = params["data_ids"]
+    scores = []
+    for data_id in data_ids:
+        scores.append({data_id: calculate_model_scores_dimension(data_id)})
+        result = {}
+    for data_set_scores in scores:
+        # print(type(data_set_scores), data_set_scores)
+        model_score = []
+        for data_id, model_scores in data_set_scores.items():
+            score_all = []            
+            for model, score in model_scores[0].items():
+                score_all.append(score["result"])
+                model_score.append(score["score_total"])
+            score_all = np.array(score_all).astype(int)
+            score_all_re = score_all.reshape(len(score["result"]), -1)
+            variances = np.var(score_all_re, axis=1)
+            result[data_id] = {}
+            result[data_id]["variance"] = list(variances)
+            result[data_id]["mean"] = np.mean(np.array(model_score))
+            result[data_id]["var"] = np.var(np.array(model_score))
+    for data_id, model_var in result.items():
+        result[data_id]["index_varis0"] = [index for index, value in enumerate(model_var["variance"]) if value == 0]
+    return result
+
+
 
 
 @app.route('/upload_datasets', methods=['POST'])
